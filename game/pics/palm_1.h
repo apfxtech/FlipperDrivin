@@ -1,5 +1,5 @@
 // Bitmap definition for arduboy 'palm_1.png' in 1-bit mask + 1-bit data in two bytes
-#include <avr/pgmspace.h>
+#include <lib/pgmspace.h>
 
 #ifndef palm_1_H
 #define palm_1_H

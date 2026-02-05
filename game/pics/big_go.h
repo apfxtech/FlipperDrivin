@@ -1,5 +1,5 @@
 // Bitmap definition for arduboy 'big_go.png' in 1-bit mask + 1-bit data in two bytes
-#include <avr/pgmspace.h>
+#include <lib/pgmspace.h>
 
 #ifndef big_go_H
 #define big_go_H

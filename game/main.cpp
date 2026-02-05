@@ -12,8 +12,11 @@ License as published by the Free Software Foundation; either
 version 2.1 of the License, or (at your option) any later version.
 */
 
-#include "ArduboyRem.h"
-#include <ArduboyTones.h>
+#include "../lib/Arduino.h"
+#include "../lib/Arduboy2.h"
+#include "../lib/ArduboyTones.h"
+#include "game.hpp"
+#include "pics/font.h"
 #include "pics/playercar.h"
 #include "pics/playercar_bottom.h"
 #include "pics/skybox.h"
@@ -35,9 +38,245 @@ version 2.1 of the License, or (at your option) any later version.
 #include "pics/big_3.h"
 #include "pics/big_go.h"
 
-// Make an instance of arduboy used for many functions
+extern ArduboyTones sound;
+
+class ArduboyAudioProxy {
+public:
+    void begin() {
+    }
+
+    void on() {
+        if(!audio_enabled()) toggle_audio();
+    }
+
+    void off() {
+        if(audio_enabled()) toggle_audio();
+    }
+
+    void saveOnOff() {
+        save_audio_on_off();
+    }
+
+    static bool enabled() {
+        return audio_enabled();
+    }
+};
+
+class ArduboyCoreRem {
+public:
+    static uint8_t flicker;
+};
+
+uint8_t ArduboyCoreRem::flicker = 0;
+
+static const uint8_t PROGMEM yMask[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
+
+class ArduboyRem : public ArduboyCoreRem {
+public:
+    ArduboyAudioProxy audio;
+    uint8_t currentButtonState = 0;
+    uint8_t previousButtonState = 0;
+
+    void boot() {
+    }
+
+    void blank() {
+        if(!buf) return;
+        memset(buf, 0, (WIDTH * HEIGHT) / 8);
+    }
+
+    void flashlight() {
+    }
+
+    void systemButtons() {
+    }
+
+    void setFrameRate(uint16_t micros_per_frame) {
+        if(micros_per_frame == 0) micros_per_frame = 16667;
+        uint16_t frame_ms = (uint16_t)((micros_per_frame + 999u) / 1000u);
+        frame_period_ms_ = frame_ms ? frame_ms : 1;
+    }
+
+    void nextFrame() {
+        uint16_t now = (uint16_t)time_ms();
+        while((uint16_t)(now - next_frame_start_) < frame_period_ms_) {
+            furi_delay_ms(1);
+            now = (uint16_t)time_ms();
+        }
+        next_frame_start_ = now;
+        flicker++;
+    }
+
+    void display() {
+        if(!buf) return;
+
+        // Emulate original gray pre-fill used by the Arduboy build.
+        uint8_t pattern = (flicker & 1) ? 0xAA : 0x55;
+        const size_t fb_size = (WIDTH * HEIGHT) / 8;
+        for(size_t i = 0; i < fb_size; i++) {
+            buf[i] = pattern;
+            pattern = (uint8_t)~pattern;
+        }
+    }
+
+    void pollButtons() {
+        previousButtonState = currentButtonState;
+        currentButtonState = to_arduboy_mask_(poll_btns());
+    }
+
+    uint8_t buttonsState() const {
+        return currentButtonState;
+    }
+
+    bool pressed(uint8_t buttons) const {
+        return (currentButtonState & buttons) == buttons;
+    }
+
+    bool justPressed(uint8_t button) const {
+        return (currentButtonState & button) && !(previousButtonState & button);
+    }
+
+    void drawByte(uint8_t x, uint8_t page, uint8_t color) const {
+        if(!buf) return;
+        if(x >= WIDTH || page >= (HEIGHT / 8)) return;
+        buf[(page * WIDTH) + x] = color;
+    }
+
+    void drawFastHLine(int16_t x, uint8_t y, int16_t w, uint8_t color) {
+        if(!buf) return;
+        if(y >= HEIGHT || w <= 0) return;
+
+        int16_t x_end = x + w;
+        if(x_end <= 0 || x >= WIDTH) return;
+        if(x < 0) x = 0;
+        if(x_end > WIDTH) x_end = WIDTH;
+
+        uint8_t* dst = buf + ((y >> 3) * WIDTH) + x;
+        uint8_t mask = pgm_read_byte(yMask + (y & 7));
+        int16_t count = x_end - x;
+
+        if(color) {
+            while(count--) {
+                *dst++ |= mask;
+            }
+        } else {
+            mask = (uint8_t)~mask;
+            while(count--) {
+                *dst++ &= mask;
+            }
+        }
+    }
+
+    void drawMaskBitmap(int8_t x, int8_t y, const uint8_t* bitmap, uint8_t hflip = 0) {
+        if(!buf || !bitmap) return;
+
+        const int16_t w = pgm_read_byte(bitmap++);
+        const int16_t h = pgm_read_byte(bitmap++);
+        const int16_t hx = (int8_t)pgm_read_byte(bitmap++);
+        const int16_t hy = (int8_t)pgm_read_byte(bitmap++);
+
+        y -= hy;
+        x -= hflip ? (w - hx) : hx;
+
+        const int16_t y_offset = y & 7;
+        const int16_t start_row = y >> 3;
+        const int16_t pages = (h + 7) >> 3;
+        const int16_t max_row = HEIGHT >> 3;
+
+        for(int16_t p = 0; p < pages; p++) {
+            const int16_t row = start_row + p;
+            const int16_t row2 = row + 1;
+
+            for(int16_t c = 0; c < w; c++) {
+                const int16_t src_col = hflip ? (w - 1 - c) : c;
+                const int16_t sx = x + c;
+                if((uint16_t)sx >= (uint16_t)WIDTH) continue;
+
+                const uint32_t idx = (uint32_t)(p * w + src_col) * 2u;
+                // Sprite format is [mask, data]. Keep-mask must be inverted only
+                // after vertical shift, like in the original Arduboy routine.
+                const uint8_t src_mask = pgm_read_byte(bitmap + idx);
+                const uint8_t src_data = pgm_read_byte(bitmap + idx + 1u);
+                const uint16_t mask16 = (uint16_t)src_mask << y_offset;
+                const uint16_t data16 = (uint16_t)src_data << y_offset;
+                const uint8_t keep_lo = (uint8_t)~mask16;
+                const uint8_t keep_hi = (uint8_t)~(mask16 >> 8);
+
+                if((uint16_t)row < (uint16_t)max_row) {
+                    uint8_t* d = &buf[row * WIDTH + sx];
+                    *d = (uint8_t)((*d & keep_lo) | (uint8_t)data16);
+                }
+
+                if(y_offset && (uint16_t)row2 < (uint16_t)max_row) {
+                    uint8_t* d2 = &buf[row2 * WIDTH + sx];
+                    *d2 = (uint8_t)((*d2 & keep_hi) | (uint8_t)(data16 >> 8));
+                }
+            }
+        }
+    }
+
+    void drawChar(uint8_t x, uint8_t y, unsigned char c) const {
+        if((x >= WIDTH) || (y >= HEIGHT) || !buf) return;
+        uint8_t page = y >> 3;
+        uint16_t glyph = (uint16_t)(c - 32u) * 6u;
+        for(uint8_t i = 0; i < 6; i++) {
+            drawByte((uint8_t)(x + i), page, pgm_read_byte(font + glyph + i));
+        }
+    }
+
+    void printBytePadded(uint8_t x, uint8_t y, byte num) const {
+        byte ten = num / 10;
+        byte unit = num % 10;
+        drawChar(x, y, (unsigned char)('0' + ten));
+        drawChar((uint8_t)(x + 6), y, (unsigned char)('0' + unit));
+    }
+
+    void setCursor(uint8_t x, uint8_t y) {
+        cursor_x_ = x;
+        cursor_y_ = y;
+    }
+
+    void print(const char* text) {
+        if(!text) return;
+        while(*text) {
+            char c = *text++;
+            if(c == '\n') {
+                cursor_x_ = 0;
+                cursor_y_ = (uint8_t)(cursor_y_ + 8);
+                continue;
+            }
+            drawChar(cursor_x_, cursor_y_, (unsigned char)c);
+            cursor_x_ = (uint8_t)(cursor_x_ + 6);
+            if(cursor_x_ > (WIDTH - 6)) {
+                cursor_x_ = 0;
+                cursor_y_ = (uint8_t)(cursor_y_ + 8);
+            }
+        }
+    }
+
+private:
+    static uint8_t to_arduboy_mask_(uint8_t in) {
+        uint8_t out = 0;
+        if(in & BTN_UP) out |= UP_BUTTON;
+        if(in & BTN_DOWN) out |= DOWN_BUTTON;
+        if(in & BTN_LEFT) out |= LEFT_BUTTON;
+        if(in & BTN_RIGHT) out |= RIGHT_BUTTON;
+        if(in & BTN_A) out |= A_BUTTON;
+        if(in & BTN_B) out |= B_BUTTON;
+        return out;
+    }
+
+private:
+    uint16_t next_frame_start_ = 0;
+    uint16_t frame_period_ms_ = 16;
+    uint8_t cursor_x_ = 0;
+    uint8_t cursor_y_ = 0;
+};
+
+// Make an instance of arduboy used for many functions.
 ArduboyRem arduboy;
-ArduboyTones sound(arduboy.audio.enabled);
+
+uint8_t state = 0;
 
 
 void drawOutrunTrack();
@@ -45,7 +284,7 @@ void drawOutrunTrack();
 // Variables for your game go here.
 byte fps = 0;
 byte fpscount = 0;
-uint16_t lastMilli = 0;
+uint32_t lastMilli = 0;
 
 byte hflip;
 byte gear;
@@ -107,6 +346,7 @@ void setup() {
 	arduboy.audio.on();
 
 	arduboy.setFrameRate(1000000 / 67);
+	lastMilli = millis();
 	// At 67 fps, each frame takes 14925 microseconds
 	// At 16 Mhz, we have about 238805 clock cycles per frame, i.e.: 16 clock cycle per microsecond
 
@@ -281,10 +521,12 @@ void UpdateEnemy() {
 
 void SetState(EState inState) {
 	currentState = inState;
+	state = (uint8_t)currentState;
 	stateFrame = 0;
 
 	// Initialization when going to 'Game' state:
 	if (currentState == EState::Game) {
+		lastMilli = millis();
 		gameTimer = 104; // 102 = 3!,  101 = 2!, 100 = 1!,  99 = GO! ...
 		gear = 0;
 		hflip = 0;
@@ -438,6 +680,7 @@ void DrawHud() {
 		// If going into the 'game over' part of this game state:
 		if (currentState == EState::Game) {
 			currentState = EState::GameOver;
+			state = (uint8_t)currentState;
 			stateFrame = 0;
 		}
 		else if (stateFrame > 300) {
@@ -535,7 +778,6 @@ void GameState()
 		}
 
 		int8_t x = playerX >> 8;
-		int8_t y = playerY >> 8;
 
 		// Brake if running off-road (i.e.: left-side or right-side of the road
 		if (speed > 50 && (x <= -127 || x >= 126)) {
@@ -842,7 +1084,7 @@ void loop() {
 	// uint16_t afterDisplay = micros();
 
 	fpscount++;
-	uint16_t currentMilli = millis();
+	uint32_t currentMilli = millis();
 	if (currentMilli - lastMilli >= 1000) {
 		lastMilli += 1000;
 		fps = fpscount;
@@ -865,4 +1107,14 @@ void loop() {
 		GameState();
 		break;
 	}
+	state = (uint8_t)currentState;
+}
+
+void game_setup() {
+	setup();
+	state = (uint8_t)currentState;
+}
+
+void game_loop() {
+	loop();
 }

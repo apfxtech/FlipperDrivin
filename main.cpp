@@ -38,7 +38,7 @@ static bool (*g_audio_enabled_cb)() = NULL;
 static bool audio_enabled_cb_impl() {
     return a.audio.enabled();
 }
-ArduboyTones sound((bool (*)())0);
+ArduboyTones sound(false);
 
 typedef struct {
     Gui* gui;
@@ -153,7 +153,7 @@ uint8_t poll_btns() {
     return out;
 }
 
-extern "C" int32_t arduboy_app(void* p) {
+extern "C" int32_t arduboy3d_app(void* p) {
     (void)p;
 
     Gui* gui = NULL;

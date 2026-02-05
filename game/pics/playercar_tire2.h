@@ -1,5 +1,5 @@
 // Bitmap definition for arduboy 'playercar_tire2.png' in 1-bit mask + 1-bit data in two bytes
-#include <avr/pgmspace.h>
+#include <lib/pgmspace.h>
 
 #ifndef playercar_tire2_H
 #define playercar_tire2_H

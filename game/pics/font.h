@@ -1,5 +1,5 @@
 // Bitmap definition for arduboy 'font.png' in 1-bit (black/white)
-#include <avr/pgmspace.h>
+#include <lib/pgmspace.h>
 
 #ifndef font_H
 #define font_H

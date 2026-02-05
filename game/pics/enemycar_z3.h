@@ -1,5 +1,5 @@
 // Bitmap definition for arduboy 'enemycar_z3.png' in 1-bit mask + 1-bit data in two bytes
-#include <avr/pgmspace.h>
+#include <lib/pgmspace.h>
 
 #ifndef enemycar_z3_H
 #define enemycar_z3_H
