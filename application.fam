@@ -3,6 +3,7 @@ App(
     name="Ardudrivin",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="arduboy3d_app",
+    cdefines=["FLIPPER_INVERT_OK_GAS"],
     requires=["gui"],
     stack_size=8 * 1024,
     fap_category="Games",

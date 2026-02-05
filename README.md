@@ -1,4 +1,4 @@
-# ard-drivin
+# FlipperDrivin
 'Ard Drivin' is an Arduboy racing game
 
 Coding: Rem
@@ -14,4 +14,10 @@ Technical info so far:
 - Sound (using ArduboyTones library)
 - It uses Arduboy2 lib, although most of the drawing routines have been written from scratch
 - Custom font!
-- png to Arduboy conversion made using Processing 3# FlipperDrivin
+- png to Arduboy conversion made using Processing 3
+
+
+## Original
+
+**rveilleux**
+[ard-drivin](https://github.com/rveilleux/ard-drivin.git)

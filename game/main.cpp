@@ -741,8 +741,12 @@ void GameState()
 		gear = !gear;
 	}
 
-	// Hold A to accelerate, release to auto-brake
-	if ((buttons & A_BUTTON)) {
+	// Hold A to accelerate, release to auto-brake.
+	bool gas_pressed = (buttons & A_BUTTON);
+#ifdef FLIPPER_INVERT_OK_GAS
+	gas_pressed = !gas_pressed;
+#endif
+	if (gas_pressed) {
 		if (gear == 0) {
 			if (speed < 140) { // Top speed in low gear:
 				speed++;
