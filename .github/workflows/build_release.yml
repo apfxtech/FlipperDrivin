@@ -1,12 +1,12 @@
-name: "FAP: Build & Auto-Release"
+name: FAP Build & Auto Release
 
 on:
   push:
     branches:
-      - main   # поменяй на release ветку, если нужно
+      - main
 
 permissions:
-  contents: write  # нужно, чтобы создавать теги и релизы
+  contents: write
 
 concurrency:
   group: auto-release-${{ github.ref }}
@@ -15,77 +15,57 @@ concurrency:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout (full history for tags)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Build with ufbt
-        uses: flipperdevices/flipperzero-ufbt-action@v0.1
+      - uses: flipperdevices/flipperzero-ufbt-action@v0.1
         id: build-app
         with:
           sdk-channel: release
 
-      - name: Upload artifacts (Actions)
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}-${{ steps.build-app.outputs.suffix }}
           path: ${{ steps.build-app.outputs.fap-artifacts }}
 
-      - name: Compute next patch tag
-        id: ver
+      - id: ver
         shell: bash
         run: |
           set -euo pipefail
-
-          # Берём последний тег vX.Y.Z, если нет — стартуем с v1.0.0
           LAST_TAG="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1 || true)"
           if [[ -z "${LAST_TAG}" ]]; then
             LAST_TAG="v1.0.0"
           fi
-
-          echo "Last tag: ${LAST_TAG}"
-
-          # Разбираем версию
           v="${LAST_TAG#v}"
           IFS='.' read -r MA MI PA <<< "${v}"
-
-          # Инкремент PATCH
           NEXT_TAG="v${MA}.${MI}.$((PA+1))"
-          echo "Next tag: ${NEXT_TAG}"
-
-          echo "last_tag=${LAST_TAG}" >> "$GITHUB_OUTPUT"
           echo "next_tag=${NEXT_TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Create git tag and push
-        shell: bash
+      - shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - shell: bash
         run: |
           set -euo pipefail
           TAG="${{ steps.ver.outputs.next_tag }}"
-
-          # На всякий случай проверим, не существует ли уже такой тег
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag already exists locally: $TAG"
-          else
-            git tag -a "$TAG" -m "Auto release $TAG"
+            exit 0
           fi
-
-          # Пушим тег в origin (это требует contents: write)
+          git tag -a "$TAG" -m "Auto release $TAG"
           git push origin "$TAG"
 
-      - name: Create GitHub Release and upload .fap
-        env:
+      - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ steps.ver.outputs.next_tag }}"
-
-          # Создаём релиз и прикрепляем файлы (если релиз уже есть — команда упадёт)
-          # steps.build-app.outputs.fap-artifacts может быть списком/глобом — передадим как есть.
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "Automated build from commit ${{ github.sha }}" \
-            ${{ steps.build-app.outputs.fap-artifacts }}
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            exit 0
+          fi
+          gh release create "$TAG" --title "$TAG" --notes "Automated build from ${{ github.sha }}" ${{ steps.build-app.outputs.fap-artifacts }}
