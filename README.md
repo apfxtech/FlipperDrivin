@@ -3,8 +3,7 @@
 
 Coding: Rem
 Graphics: LP
-
-Link on Arduboy.com: http://community.arduboy.com/t/ard-drivin-is-coming/3178
+Port: apfxtech
 
 Technical info so far:
 - Game runs at a constant rate of 67 frames per second
@@ -21,3 +20,5 @@ Technical info so far:
 
 **rveilleux**
 [ard-drivin](https://github.com/rveilleux/ard-drivin.git)
+
+Link on Arduboy.com: http://community.arduboy.com/t/ard-drivin-is-coming/3178
