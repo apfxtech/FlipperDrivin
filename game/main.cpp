@@ -13,6 +13,7 @@ version 2.1 of the License, or (at your option) any later version.
 */
 
 #include "../lib/Arduino.h"
+#include "../lib/ArduboyAudio.h"
 #include "../lib/Arduboy2.h"
 #include "../lib/ArduboyTones.h"
 #include "game.hpp"
@@ -40,28 +41,6 @@ version 2.1 of the License, or (at your option) any later version.
 
 extern ArduboyTones sound;
 
-class ArduboyAudioProxy {
-public:
-    void begin() {
-    }
-
-    void on() {
-        if(!audio_enabled()) toggle_audio();
-    }
-
-    void off() {
-        if(audio_enabled()) toggle_audio();
-    }
-
-    void saveOnOff() {
-        save_audio_on_off();
-    }
-
-    static bool enabled() {
-        return audio_enabled();
-    }
-};
-
 class ArduboyCoreRem {
 public:
     static uint8_t flicker;
@@ -73,7 +52,7 @@ static const uint8_t PROGMEM yMask[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40
 
 class ArduboyRem : public ArduboyCoreRem {
 public:
-    ArduboyAudioProxy audio;
+    ArduboyAudio audio;
     uint8_t currentButtonState = 0;
     uint8_t previousButtonState = 0;
 
@@ -344,7 +323,6 @@ void setup() {
 	arduboy.flashlight(); // light the RGB LED and screen if UP button is being held.
 	arduboy.systemButtons(); // check for and handle buttons held during start up for system control  
 	arduboy.audio.begin();
-	arduboy.audio.on();
 
 	arduboy.setFrameRate(1000000 / 67);
 	lastMilli = millis();
